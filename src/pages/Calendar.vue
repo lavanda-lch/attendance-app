@@ -85,26 +85,18 @@
             ]"
             @click="selectDay(day)"
           >
-            <!-- 日记标记 -->
-            <div class="day-diary-dot" v-if="day.hasDiary" title="有日记">📝</div>
-
-            <!-- 天气图标 -->
-            <div class="day-weather" v-if="day.record?.weather">
-              {{ getWeatherEmoji(day.record.weather) }}
-            </div>
-
-            <div class="day-main">
-              <div class="day-number">{{ day.date.getDate() }}</div>
-              <!-- 状态小圆点 -->
-              <div
+            <!-- 日期 + 状态圆点（右上角） -->
+            <div class="day-header">
+              <span class="day-number">{{ day.date.getDate() }}</span>
+              <span
                 class="day-status-dot"
                 v-if="day.record?.clockInTime"
                 :class="'dot-' + (day.record.status || 'normal')"
-              ></div>
+              ></span>
             </div>
 
             <!-- 状态标签 -->
-            <div class="day-status" v-if="day.record">
+            <div class="day-label" v-if="day.record">
               <span
                 class="status-badge"
                 :class="'badge-' + (day.record.status || 'normal')"
@@ -113,14 +105,12 @@
               </span>
             </div>
 
-            <!-- 薪资 -->
-            <div class="day-salary" v-if="day.record?.totalSalary">
-              ¥{{ day.record.totalSalary.toFixed(0) }}
-            </div>
-
-            <!-- 心情图标 -->
-            <div class="day-mood" v-if="day.record?.mood">
-              {{ getMoodEmoji(day.record.mood) }}
+            <!-- 右侧 2×2 图标栏 -->
+            <div class="day-icons">
+              <span class="day-icon" v-if="day.record?.weather" :title="'天气：' + getWeatherLabel(day.record.weather)">{{ getWeatherEmoji(day.record.weather) }}</span>
+              <span class="day-icon" v-if="day.record?.mood" :title="'心情：' + getMoodLabel(day.record.mood)">{{ getMoodEmoji(day.record.mood) }}</span>
+              <span class="day-icon day-icon-diary" v-if="day.hasDiary" title="有日记"></span>
+              <span class="day-icon day-icon-empty" v-if="!day.record?.weather && !day.record?.mood && !day.hasDiary"></span>
             </div>
           </div>
         </div>
@@ -1180,97 +1170,85 @@ onMounted(() => {
 .day.selected {
   border-color: var(--el-color-primary, #409eff);
   border-width: 2px;
-  background: linear-gradient(135deg, var(--el-color-primary-light-8, #d9ecff) 0%, var(--el-color-primary-light-9, #ecf5ff) 100%);
-  box-shadow: 0 0 0 1px var(--el-color-primary, #409eff);
   z-index: 1;
 }
 
-/* ---- 天气/心情图标在单元格中 ---- */
-.day-weather {
-  position: absolute;
-  top: 4px;
-  right: 6px;
-  font-size: 16px;
-  line-height: 1;
-  opacity: 0.85;
-}
-
-.day-mood {
-  position: absolute;
-  bottom: 4px;
-  right: 6px;
-  font-size: 14px;
-  line-height: 1;
-  opacity: 0.8;
-}
-
-.day-main {
+/* ---- 日期头部：日期左 + 状态圆点右 ---- */
+.day-header {
   display: flex;
-  align-items: center;
-  gap: 6px;
+  justify-content: space-between;
+  align-items: flex-start;
   margin-bottom: 4px;
 }
 
 .day-number {
-  font-size: 17px;
+  font-size: 15px;
   font-weight: 600;
   color: var(--el-text-color-primary, #303133);
+  line-height: 1;
 }
 
 .day:not(.current-month) .day-number {
-  opacity: 0.45;
+  opacity: 0.35;
+  font-weight: 500;
 }
 
 .day-status-dot {
-  width: 9px;
-  height: 9px;
+  width: 8px;
+  height: 8px;
   border-radius: 50%;
   flex-shrink: 0;
-  transition: transform 0.2s ease;
-}
-.day.has-record:hover .day-status-dot {
-  transform: scale(1.25);
+  margin-top: 2px;
 }
 
-.dot-normal { background: #67c23a; box-shadow: 0 0 6px rgba(103, 194, 58, 0.45); }
-.dot-late   { background: #e6a23c; box-shadow: 0 0 6px rgba(230, 162, 60, 0.45); }
-.dot-early  { background: #f56c6c; box-shadow: 0 0 6px rgba(245, 108, 108, 0.45); }
-.dot-absent { background: #909399; box-shadow: 0 0 6px rgba(144, 147, 153, 0.35); }
+.dot-normal { background: #67c23a; }
+.dot-late   { background: #e6a23c; }
+.dot-early  { background: #f56c6c; }
+.dot-absent { background: #909399; }
 
-.day-status {
-  margin-bottom: 2px;
+/* ---- 状态标签 ---- */
+.day-label {
+  margin-bottom: 4px;
+  line-height: 1.2;
 }
 
 .status-badge {
-  font-size: 11px;
-  padding: 1px 8px;
-  border-radius: 10px;
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 8px;
   font-weight: 500;
   display: inline-block;
-  line-height: 1.6;
+  line-height: 1.5;
 }
 
-.badge-normal {
-  background: rgba(103, 194, 58, 0.12);
-  color: #67c23a;
-}
-.badge-late {
-  background: rgba(230, 162, 60, 0.12);
-  color: #e6a23c;
-}
-.badge-early {
-  background: rgba(245, 108, 108, 0.12);
-  color: #f56c6c;
-}
-.badge-absent {
-  background: rgba(144, 147, 153, 0.12);
-  color: #909399;
+.badge-normal { background: rgba(103, 194, 58, 0.12); color: #67c23a; }
+.badge-late   { background: rgba(230, 162, 60, 0.12); color: #e6a23c; }
+.badge-early  { background: rgba(245, 108, 108, 0.12); color: #f56c6c; }
+.badge-absent { background: rgba(144, 147, 153, 0.12); color: #909399; }
+
+/* ---- 右侧 2×2 图标栏 ---- */
+.day-icons {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2px;
+  margin-top: auto;
+  align-self: flex-end;
+  margin-left: auto;
 }
 
-.day-salary {
-  font-size: 12px;
-  color: var(--el-color-success, #67c23a);
-  font-weight: 500;
+.day-icon {
+  font-size: 11px;
+  line-height: 1;
+  text-align: center;
+}
+
+.day-icon-diary {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--app-primary, #6366f1);
+  display: inline-block;
+  margin: 2px auto 0;
 }
 
 /* ---- 详情面板 ---- */
@@ -1549,7 +1527,6 @@ html.dark .day.today .day-number {
 html.dark .day.selected {
   border-color: var(--el-color-primary, #409eff);
   border-width: 2px;
-  background: var(--el-bg-color, #141414);
 }
 
 html.dark .day.selected .day-number {
@@ -1657,18 +1634,6 @@ html.dark .preview-item:hover {
 
 html.dark .form-help {
   color: var(--el-text-color-secondary, #a3a6ad);
-}
-
-/* ---- 日记标记（日历单元格） ---- */
-.day-diary-dot {
-  position: absolute;
-  top: 4px;
-  left: 8px;
-  font-size: 13px;
-  line-height: 1;
-  opacity: 0.9;
-  pointer-events: none;
-  z-index: 1;
 }
 
 /* ---- 日记卡片 ---- */
