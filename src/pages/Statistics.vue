@@ -73,7 +73,42 @@
           <el-icon><Calendar /></el-icon>
           <span>出勤热力图</span>
         </div>
-        <div id="heatmapChart" ref="heatmapChart" class="chart-body"></div>
+        <!-- 自定义日历热力图 -->
+        <div class="heatmap-container">
+          <!-- 星期头 -->
+          <div class="heatmap-weekdays">
+            <span v-for="d in weekHeaders" :key="d" class="heatmap-weekday">{{ d }}</span>
+          </div>
+          <!-- 日期网格 -->
+          <div class="heatmap-grid">
+            <div
+              v-for="(cell, idx) in heatmapCells"
+              :key="idx"
+              class="heatmap-cell"
+              :class="{
+                'cell-empty': cell.empty,
+                'cell-normal': cell.status === 'normal',
+                'cell-late': cell.status === 'late',
+                'cell-early': cell.status === 'early',
+                'cell-absent': cell.status === 'absent',
+                'cell-today': cell.isToday,
+                'cell-weekend': cell.isWeekend
+              }"
+              :title="cell.tooltip"
+            >
+              <span class="cell-day">{{ cell.day }}</span>
+              <span class="cell-salary" v-if="cell.salary">¥{{ cell.salary }}</span>
+            </div>
+          </div>
+          <!-- 图例 -->
+          <div class="heatmap-legend">
+            <span class="legend-item"><i class="legend-dot dot-empty"></i>无记录</span>
+            <span class="legend-item"><i class="legend-dot dot-normal"></i>正常</span>
+            <span class="legend-item"><i class="legend-dot dot-late"></i>迟到</span>
+            <span class="legend-item"><i class="legend-dot dot-early"></i>早退</span>
+            <span class="legend-item"><i class="legend-dot dot-absent"></i>缺勤</span>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -181,9 +216,9 @@ const monthlyStats = ref({})
 const loading = ref(false)
 
 const salaryChart = ref(null)
-const heatmapChart = ref(null)
 let salaryChartInstance = null
-let heatmapChartInstance = null
+
+const weekHeaders = ['一', '二', '三', '四', '五', '六', '日']
 
 const selectedMonthLabel = computed(() => {
   const opt = monthOptions.value.find(o => o.value === selectedMonth.value)
@@ -240,6 +275,61 @@ const moodStats = computed(() => {
     .sort((a, b) => b.count - a.count)
 })
 
+const heatmapCells = computed(() => {
+  const [y, m] = selectedMonth.value.split('-').map(Number)
+  const daysInMonth = new Date(y, m, 0).getDate()
+  const firstDay = new Date(y, m - 1, 1).getDay() // 0=Sun
+  const startOffset = firstDay === 0 ? 6 : firstDay - 1 // 周一=0
+
+  const recordMap = {}
+  monthRecords.value.forEach(r => {
+    recordMap[r.date] = r
+  })
+
+  const todayStr = new Date().toISOString().substring(0, 10)
+  const cells = []
+
+  // 前置空白格
+  for (let i = 0; i < startOffset; i++) {
+    cells.push({ empty: true, day: '', status: '', tooltip: '', salary: '', isToday: false, isWeekend: false })
+  }
+
+  for (let d = 1; d <= daysInMonth; d++) {
+    const dateStr = `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`
+    const rec = recordMap[dateStr]
+    const dow = new Date(y, m - 1, d).getDay() // 0=Sun
+    const isWeekend = dow === 0 || dow === 6
+
+    let status = ''
+    let tooltip = `${dateStr} 无记录`
+    let salary = ''
+
+    if (rec) {
+      status = rec.status || 'normal'
+      const statusLabels = { normal: '正常', late: '迟到', early: '早退', absent: '缺勤' }
+      tooltip = `${dateStr} ${statusLabels[status] || status}`
+      if (rec.clockInTimeDisplay) tooltip += ` | 上班 ${rec.clockInTimeDisplay}`
+      if (rec.clockOutTimeDisplay) tooltip += ` | 下班 ${rec.clockOutTimeDisplay}`
+      if (rec.totalSalary) {
+        tooltip += ` | ¥${rec.totalSalary.toFixed(0)}`
+        salary = rec.totalSalary.toFixed(0)
+      }
+    }
+
+    cells.push({
+      empty: false,
+      day: d,
+      status: rec ? status : '',
+      tooltip,
+      salary,
+      isToday: dateStr === todayStr,
+      isWeekend
+    })
+  }
+
+  return cells
+})
+
 function generateMonthOptions() {
   const options = []
   const now = new Date()
@@ -276,10 +366,6 @@ function renderCharts() {
     if (!salaryChartInstance) salaryChartInstance = echarts.init(salaryChart.value)
     renderSalaryChart()
   }
-  if (heatmapChart.value) {
-    if (!heatmapChartInstance) heatmapChartInstance = echarts.init(heatmapChart.value)
-    renderHeatmapChart()
-  }
 }
 
 function renderSalaryChart() {
@@ -305,82 +391,6 @@ function renderSalaryChart() {
         { offset: 0, color: 'rgba(99,102,241,0.28)' },
         { offset: 1, color: 'rgba(99,102,241,0.02)' }
       ])}
-    }]
-  })
-}
-
-function renderHeatmapChart() {
-  if (!monthRecords.value.length) {
-    heatmapChartInstance.clear()
-    return
-  }
-
-  const [year, month] = selectedMonth.value.split('-').map(Number)
-  const daysInMonth = new Date(year, month, 0).getDate()
-
-  // 状态映射为数值
-  const statusMap = { normal: 1, late: 2, early: 3, absent: 0 }
-  const statusColors = ['#e5e7eb', '#10b981', '#f59e0b', '#ef4444']
-
-  const data = []
-  monthRecords.value.forEach(r => {
-    const day = parseInt(r.date.substring(8, 10))
-    const val = r.clockInTime ? (statusMap[r.status] || 1) : 0
-    data.push([`${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`, val])
-  })
-
-  // 填充当月所有日期（无记录的显示0）
-  for (let d = 1; d <= daysInMonth; d++) {
-    const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(d).padStart(2, '0')}`
-    if (!data.find(item => item[0] === dateStr)) {
-      data.push([dateStr, -1]) // -1 表示无数据
-    }
-  }
-
-  heatmapChartInstance.setOption({
-    tooltip: {
-      formatter: (p) => {
-        if (!p.value) return `${p.data[0]}<br/>无记录`
-        const labels = ['', '正常', '迟到', '早退']
-        return `${p.data[0]}<br/>${labels[p.data[1]] || '缺勤'}`
-      }
-    },
-    visualMap: {
-      min: -1, max: 3,
-      inRange: { color: ['#f3f4f6', '#10b981', '#f59e0b', '#ef4444', '#6366f1'] },
-      categories: ['无记录', '正常', '迟到', '早退', '其他'],
-      bottom: 0, left: 'center',
-      textStyle: { color: '#909399' }
-    },
-    calendar: {
-      top: 'middle', left: 'center',
-      range: `${year}-${String(month).padStart(2, '0')}`,
-      cellSize: ['auto', 20],
-      yearLabel: { show: false },
-      monthLabel: { show: false },
-      dayLabel: {
-        firstDay: 1,
-        fontSize: 11,
-        color: '#909399',
-        nameMap: ['', '一', '', '三', '', '五', '']
-      },
-      itemStyle: {
-        borderRadius: 4,
-        borderWidth: 2,
-        borderColor: '#fff'
-      },
-      splitLine: { show: false }
-    },
-    series: [{
-      type: 'heatmap',
-      coordinateSystem: 'calendar',
-      data: data,
-      label: {
-        show: true,
-        formatter: (p) => String(new Date(p.data[0]).getDate()),
-        fontSize: 10,
-        color: '#606266'
-      }
     }]
   })
 }
@@ -424,12 +434,10 @@ onMounted(() => {
 onUnmounted(() => {
   window.removeEventListener('resize', handleResize)
   if (salaryChartInstance) salaryChartInstance.dispose()
-  if (heatmapChartInstance) heatmapChartInstance.dispose()
 })
 
 function handleResize() {
   if (salaryChartInstance) salaryChartInstance.resize()
-  if (heatmapChartInstance) heatmapChartInstance.resize()
 }
 </script>
 
@@ -579,6 +587,145 @@ function handleResize() {
   height: 320px;
 }
 
+/* ---- 自定义日历热力图 ---- */
+.heatmap-container {
+  padding: 4px 0;
+}
+
+.heatmap-weekdays {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 4px;
+  margin-bottom: 6px;
+}
+
+.heatmap-weekday {
+  text-align: center;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--el-text-color-secondary, #909399);
+  padding: 4px 0;
+}
+
+.heatmap-weekday:nth-child(6),
+.heatmap-weekday:nth-child(7) {
+  color: var(--el-color-danger-light-3, #f89898);
+}
+
+.heatmap-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 4px;
+}
+
+.heatmap-cell {
+  aspect-ratio: 1;
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  cursor: default;
+  transition: transform 0.15s, box-shadow 0.15s;
+  position: relative;
+  min-width: 0;
+}
+
+.heatmap-cell:hover {
+  transform: scale(1.12);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.18);
+  z-index: 2;
+}
+
+.cell-empty {
+  background: transparent;
+  pointer-events: none;
+}
+
+.cell-normal {
+  background: linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%);
+  color: #065f46;
+}
+
+.cell-late {
+  background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+  color: #92400e;
+}
+
+.cell-early {
+  background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%);
+  color: #991b1b;
+}
+
+.cell-absent {
+  background: linear-gradient(135deg, #f3f4f6 0%, #e5e7eb 100%);
+  color: #6b7280;
+}
+
+/* 无记录 — 浅灰 */
+.heatmap-cell:not(.cell-empty):not(.cell-normal):not(.cell-late):not(.cell-early):not(.cell-absent) {
+  background: var(--el-fill-color-lighter, #f9fafb);
+  color: var(--el-text-color-placeholder, #c0c4cc);
+}
+
+/* 今日标记 */
+.cell-today {
+  box-shadow: 0 0 0 2px var(--app-primary, #6366f1);
+}
+
+.cell-today .cell-day {
+  font-weight: 800;
+}
+
+.cell-day {
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.cell-salary {
+  font-size: 10px;
+  font-weight: 500;
+  opacity: 0.75;
+  margin-top: 1px;
+  line-height: 1;
+}
+
+/* 周末文字色 */
+.cell-weekend .cell-day {
+  opacity: 0.7;
+}
+
+/* ---- 图例 ---- */
+.heatmap-legend {
+  display: flex;
+  justify-content: center;
+  gap: 16px;
+  margin-top: 14px;
+  flex-wrap: wrap;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  color: var(--el-text-color-secondary, #909399);
+}
+
+.legend-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+.dot-empty  { background: var(--el-fill-color-lighter, #f3f4f6); border: 1px solid #e5e7eb; }
+.dot-normal { background: linear-gradient(135deg, #d1fae5, #a7f3d0); }
+.dot-late   { background: linear-gradient(135deg, #fef3c7, #fde68a); }
+.dot-early  { background: linear-gradient(135deg, #fee2e2, #fecaca); }
+.dot-absent { background: linear-gradient(135deg, #f3f4f6, #e5e7eb); }
+
 /* ---- 心情天气统计 ---- */
 .mood-weather-card {
   display: flex;
@@ -725,6 +872,42 @@ html.dark .table-header {
 
 html.dark .mw-tag {
   background: var(--el-fill-color-lighter, #1a1a1b);
+}
+
+/* 暗色热力图 */
+html.dark .cell-normal {
+  background: linear-gradient(135deg, #064e3b 0%, #065f46 100%);
+  color: #6ee7b7;
+}
+
+html.dark .cell-late {
+  background: linear-gradient(135deg, #78350f 0%, #92400e 100%);
+  color: #fcd34d;
+}
+
+html.dark .cell-early {
+  background: linear-gradient(135deg, #7f1d1d 0%, #991b1b 100%);
+  color: #fca5a5;
+}
+
+html.dark .cell-absent {
+  background: linear-gradient(135deg, #374151 0%, #4b5563 100%);
+  color: #d1d5db;
+}
+
+html.dark .heatmap-cell:not(.cell-empty):not(.cell-normal):not(.cell-late):not(.cell-early):not(.cell-absent) {
+  background: var(--el-fill-color-lighter, #1f2937);
+  color: var(--el-text-color-placeholder, #6b7280);
+}
+
+html.dark .dot-empty  { background: var(--el-fill-color-lighter, #374151); border-color: #4b5563; }
+html.dark .dot-normal { background: linear-gradient(135deg, #064e3b, #065f46); }
+html.dark .dot-late   { background: linear-gradient(135deg, #78350f, #92400e); }
+html.dark .dot-early  { background: linear-gradient(135deg, #7f1d1d, #991b1b); }
+html.dark .dot-absent { background: linear-gradient(135deg, #374151, #4b5563); }
+
+html.dark .cell-today {
+  box-shadow: 0 0 0 2px var(--app-primary, #818cf8);
 }
 
 /* ---- 响应式 ---- */
