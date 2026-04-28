@@ -85,6 +85,9 @@
             ]"
             @click="selectDay(day)"
           >
+            <!-- 日记标记 -->
+            <div class="day-diary-dot" v-if="day.hasDiary" title="有日记">📝</div>
+
             <!-- 天气图标 -->
             <div class="day-weather" v-if="day.record?.weather">
               {{ getWeatherEmoji(day.record.weather) }}
@@ -185,6 +188,73 @@
             <el-button type="danger" @click="deleteDayRecord" :icon="Delete">删除</el-button>
           </div>
         </template>
+
+        <!-- 日记卡片 -->
+        <div class="diary-card">
+          <div class="diary-card-header">
+            <span class="diary-card-title">
+              <el-icon><Notebook /></el-icon> 日记
+            </span>
+            <div class="diary-card-actions" v-if="!diaryEditing">
+              <el-button
+                v-if="!diaryEntry"
+                type="primary"
+                size="small"
+                :icon="DocumentAdd"
+                @click="startEditDiary"
+                link
+              >写日记</el-button>
+              <template v-else>
+                <el-button size="small" :icon="Edit" @click="startEditDiary" link>编辑</el-button>
+                <el-button size="small" :icon="Delete" @click="deleteDiary" link type="danger">删除</el-button>
+              </template>
+            </div>
+          </div>
+
+          <!-- 查看模式 -->
+          <div v-if="!diaryEditing && diaryEntry" class="diary-view">
+            <div class="diary-tasks-view" v-if="diaryEntry.tasks">
+              <div class="diary-label">工作任务</div>
+              <div class="diary-tasks-text">{{ diaryEntry.tasks }}</div>
+            </div>
+            <div class="diary-content-view" v-if="diaryEntry.content" v-html="diaryEntry.content"></div>
+            <div class="diary-empty" v-if="!diaryEntry.tasks && !diaryEntry.content">
+              暂无内容，点击"编辑"开始写日记
+            </div>
+          </div>
+
+          <!-- 无日记 -->
+          <div v-if="!diaryEditing && !diaryEntry" class="diary-placeholder">
+            记录今天的工作和心情吧～
+          </div>
+
+          <!-- 编辑模式 -->
+          <div v-if="diaryEditing" class="diary-editor">
+            <div class="diary-editor-field">
+              <label class="diary-editor-label">工作任务</label>
+              <el-input
+                v-model="diaryTasks"
+                type="textarea"
+                :rows="2"
+                placeholder="记录今天的工作任务..."
+              />
+            </div>
+            <div class="diary-editor-field">
+              <label class="diary-editor-label">日记内容（支持粘贴图片）</label>
+              <div
+                ref="diaryEditorRef"
+                class="diary-content-editor"
+                contenteditable="true"
+                @paste="handlePaste"
+                placeholder="写点什么..."
+              ></div>
+            </div>
+            <div class="diary-editor-actions">
+              <el-button @click="cancelEditDiary">取消</el-button>
+              <el-button type="primary" @click="saveDiary" :loading="diaryLoading">保存</el-button>
+            </div>
+          </div>
+        </div>
       </div>
 
     <!-- 编辑/补打卡对话框 -->
@@ -350,13 +420,15 @@
 </template>
 
 <script setup>
-import { ref, onMounted, computed, watch } from 'vue'
+import { ref, onMounted, computed, watch, nextTick } from 'vue'
 import { useAttendance } from '../composables/useAttendance.js'
+import { useDiary } from '../composables/useDiary.js'
 import { formatDate, getMonthString, isWeekend } from '../utils/date.js'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   ArrowLeft, ArrowRight, Calendar, Money, Timer,
-  WarningFilled, Top, Bottom, Clock, Coin, Edit, Delete
+  WarningFilled, Top, Bottom, Clock, Coin, Edit, Delete,
+  DocumentAdd, Notebook
 } from '@element-plus/icons-vue'
 
 const {
@@ -366,6 +438,15 @@ const {
   editRecord: editRecordApi,
   deleteRecord: deleteRecordApi
 } = useAttendance()
+
+const {
+  diaryEntry,
+  loading: diaryLoading,
+  loadDiaryEntry,
+  saveDiaryEntry: saveDiaryApi,
+  deleteDiaryEntry: deleteDiaryApi,
+  getMonthDiaries
+} = useDiary()
 
 const currentDate = ref(new Date())
 const calendarDays = ref([])
@@ -391,6 +472,13 @@ const batchForm = ref({
   status: 'normal'
 })
 const previewDates = ref([])
+
+// 日记状态
+const diaryText = ref('')
+const diaryTasks = ref('')
+const diaryEditing = ref(false)
+const diaryEditorRef = ref(null)
+const monthDiaries = ref([])
 
 const weekdays = ['周一', '周二', '周三', '周四', '周五', '周六', '周日']
 
@@ -512,11 +600,13 @@ function createDayObject(date, isCurrentMonth) {
   const dateStr = formatDate(date)
   const todayStr = formatDate(new Date())
   const record = monthRecords.value.find(r => r.date === dateStr) || null
+  const hasDiary = monthDiaries.value.some(d => d.date === dateStr)
   return {
     date, dateStr, isCurrentMonth,
     isToday: dateStr === todayStr,
     isWeekend: isWeekend(date),
     hasRecord: !!record,
+    hasDiary,
     record
   }
 }
@@ -527,11 +617,15 @@ async function loadMonthData() {
   if (result.success) {
     monthRecords.value = result.records || []
   }
+  // 加载月度日记，用于在日历格上显示标记
+  monthDiaries.value = await getMonthDiaries(yearMonth)
   generateCalendar()
 }
 
-function selectDay(day) {
+async function selectDay(day) {
   selectedDay.value = day
+  diaryEditing.value = false
+  await loadDiaryForDay(day.dateStr)
   if (!day.hasRecord) {
     editForm.value = {
       date: day.dateStr,
@@ -544,6 +638,19 @@ function selectDay(day) {
       mood: ''
     }
     editDialogVisible.value = true
+  }
+}
+
+async function loadDiaryForDay(dateStr) {
+  const entry = await loadDiaryEntry(dateStr)
+  if (entry) {
+    diaryTasks.value = entry.tasks || ''
+    diaryText.value = entry.content || ''
+    diaryEntry.value = entry
+  } else {
+    diaryTasks.value = ''
+    diaryText.value = ''
+    diaryEntry.value = null
   }
 }
 
@@ -713,6 +820,113 @@ async function saveBatch() {
     ElMessage.error('批量补打卡失败，请重试')
   } finally {
     loading.value = false
+  }
+}
+
+function startEditDiary() {
+  diaryEditing.value = true
+  nextTick(() => {
+    const el = diaryEditorRef.value
+    if (el) {
+      el.innerHTML = diaryText.value || ''
+      el.focus()
+    }
+  })
+}
+
+function cancelEditDiary() {
+  diaryEditing.value = false
+  if (!diaryEntry.value) {
+    diaryTasks.value = ''
+    diaryText.value = ''
+  } else {
+    diaryTasks.value = diaryEntry.value.tasks || ''
+    diaryText.value = diaryEntry.value.content || ''
+  }
+}
+
+async function saveDiary() {
+  if (!selectedDay.value) return
+
+  const editorEl = diaryEditorRef.value
+  const content = editorEl ? editorEl.innerHTML : ''
+
+  const entry = {
+    date: selectedDay.value.dateStr,
+    tasks: diaryTasks.value,
+    content
+  }
+
+  if (diaryEntry.value?.id) {
+    entry.id = diaryEntry.value.id
+    entry.createdAt = diaryEntry.value.createdAt
+  }
+
+  const result = await saveDiaryApi(entry)
+  if (result.success) {
+    ElMessage.success('日记已保存')
+    diaryText.value = content
+    diaryEditing.value = false
+    // 更新日历标记
+    selectedDay.value.hasDiary = true
+    await loadMonthData()
+  } else {
+    ElMessage.error(result.message || '保存失败')
+  }
+}
+
+async function deleteDiary() {
+  if (!selectedDay.value) return
+  try {
+    await ElMessageBox.confirm('确定删除这条日记吗？', '提示', {
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+      type: 'warning'
+    })
+    const result = await deleteDiaryApi(selectedDay.value.dateStr)
+    if (result.success) {
+      ElMessage.success('日记已删除')
+      diaryEntry.value = null
+      diaryTasks.value = ''
+      diaryText.value = ''
+      diaryEditing.value = false
+      selectedDay.value.hasDiary = false
+      await loadMonthData()
+    } else {
+      ElMessage.error(result.message || '删除失败')
+    }
+  } catch (err) {
+    // 用户取消
+  }
+}
+
+function handlePaste(e) {
+  const items = e.clipboardData?.items
+  if (!items) return
+
+  for (const item of items) {
+    if (item.type.startsWith('image/')) {
+      e.preventDefault()
+      const file = item.getAsFile()
+      const reader = new FileReader()
+      reader.onload = () => {
+        const img = document.createElement('img')
+        img.src = reader.result
+        img.style.maxWidth = '100%'
+        img.style.borderRadius = '8px'
+        img.style.margin = '8px 0'
+        const sel = window.getSelection()
+        const range = sel.getRangeAt(0)
+        range.deleteContents()
+        range.insertNode(img)
+        // 光标移到图片后面
+        range.setStartAfter(img)
+        range.collapse(true)
+        sel.removeAllRanges()
+        sel.addRange(range)
+      }
+      reader.readAsDataURL(file)
+    }
   }
 }
 
@@ -1443,5 +1657,198 @@ html.dark .preview-item:hover {
 
 html.dark .form-help {
   color: var(--el-text-color-secondary, #a3a6ad);
+}
+
+/* ---- 日记标记（日历单元格） ---- */
+.day-diary-dot {
+  position: absolute;
+  top: 4px;
+  left: 8px;
+  font-size: 13px;
+  line-height: 1;
+  opacity: 0.9;
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* ---- 日记卡片 ---- */
+.diary-card {
+  margin-top: 20px;
+  padding: 18px 20px;
+  border-radius: 16px;
+  border: 1px solid var(--el-border-color-lighter, #ebeef5);
+  background: var(--el-bg-color, #fff);
+}
+
+.diary-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.diary-card-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--el-text-color-primary, #303133);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.diary-card-title .el-icon {
+  color: var(--app-primary, #6366f1);
+}
+
+.diary-placeholder {
+  color: var(--el-text-color-placeholder, #c0c4cc);
+  font-size: 14px;
+  text-align: center;
+  padding: 16px 0;
+}
+
+.diary-empty {
+  color: var(--el-text-color-secondary, #909399);
+  font-size: 14px;
+  text-align: center;
+  padding: 12px 0;
+}
+
+/* ---- 查看模式 ---- */
+.diary-view {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.diary-tasks-view {
+  background: var(--el-fill-color-lighter, #fafafa);
+  border-radius: 12px;
+  padding: 12px 16px;
+  border-left: 3px solid var(--el-color-primary, #409eff);
+}
+
+.diary-label {
+  font-size: 12px;
+  color: var(--el-text-color-secondary, #909399);
+  margin-bottom: 6px;
+  font-weight: 500;
+}
+
+.diary-tasks-text {
+  font-size: 14px;
+  color: var(--el-text-color-primary, #303133);
+  white-space: pre-wrap;
+  line-height: 1.6;
+}
+
+.diary-content-view {
+  font-size: 14px;
+  color: var(--el-text-color-primary, #303133);
+  line-height: 1.8;
+  word-break: break-word;
+}
+
+.diary-content-view :deep(img) {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  display: block;
+}
+
+/* ---- 编辑模式 ---- */
+.diary-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.diary-editor-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.diary-editor-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--el-text-color-secondary, #909399);
+}
+
+.diary-content-editor {
+  min-height: 120px;
+  max-height: 400px;
+  overflow-y: auto;
+  border: 1px solid var(--el-border-color, #dcdfe6);
+  border-radius: 10px;
+  padding: 12px 14px;
+  font-size: 14px;
+  line-height: 1.8;
+  color: var(--el-text-color-primary, #303133);
+  background: var(--el-fill-color-lighter, #fafafa);
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.diary-content-editor:focus {
+  border-color: var(--el-color-primary, #409eff);
+  background: var(--el-bg-color, #fff);
+  box-shadow: 0 0 0 2px rgba(var(--el-color-primary-rgb, 64, 158, 255), 0.12);
+}
+
+.diary-content-editor:empty::before {
+  content: attr(placeholder);
+  color: var(--el-text-color-placeholder, #c0c4cc);
+}
+
+.diary-content-editor :deep(img) {
+  max-width: 100%;
+  border-radius: 6px;
+  margin: 8px 0;
+}
+
+.diary-editor-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+/* =============================================
+   DARK MODE — 日记
+   ============================================= */
+
+html.dark .diary-card {
+  background: var(--el-bg-color, #1d1e1f);
+  border-color: var(--el-border-color-light, #414243);
+}
+
+html.dark .diary-card-title {
+  color: var(--el-text-color-primary, #e5eaf3);
+}
+
+html.dark .diary-tasks-view {
+  background: var(--el-fill-color-lighter, #1a1a1b);
+  border-left-color: var(--el-color-primary, #409eff);
+}
+
+html.dark .diary-tasks-text,
+html.dark .diary-content-view {
+  color: var(--el-text-color-primary, #e5eaf3);
+}
+
+html.dark .diary-editor-label,
+html.dark .diary-label {
+  color: var(--el-text-color-secondary, #a3a6ad);
+}
+
+html.dark .diary-content-editor {
+  background: var(--el-fill-color-lighter, #1a1a1b);
+  border-color: var(--el-border-color, #4c4d4f);
+  color: var(--el-text-color-primary, #e5eaf3);
+}
+
+html.dark .diary-content-editor:focus {
+  border-color: var(--el-color-primary, #409eff);
+  background: var(--el-bg-color, #141414);
 }
 </style>

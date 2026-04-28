@@ -1,12 +1,13 @@
 // IndexedDB数据库封装
 const DB_NAME = 'attendance_db'
-const DB_VERSION = 1
+const DB_VERSION = 2
 
 // 对象存储名称
 const STORES = {
   SALARY_SETTINGS: 'salary_settings',
   PUNCH_RECORDS: 'punch_records',
-  MONTHLY_SUMMARIES: 'monthly_summaries'
+  MONTHLY_SUMMARIES: 'monthly_summaries',
+  DIARY_ENTRIES: 'diary_entries'
 }
 
 class AttendanceDB {
@@ -39,6 +40,13 @@ class AttendanceDB {
         // 创建月度统计存储
         if (!db.objectStoreNames.contains(STORES.MONTHLY_SUMMARIES)) {
           const store = db.createObjectStore(STORES.MONTHLY_SUMMARIES, { keyPath: 'id' })
+        }
+
+        // 创建日记存储（v2 新增）
+        if (!db.objectStoreNames.contains(STORES.DIARY_ENTRIES)) {
+          const diaryStore = db.createObjectStore(STORES.DIARY_ENTRIES, { keyPath: 'id' })
+          diaryStore.createIndex('date', 'date', { unique: true })
+          diaryStore.createIndex('month', 'month', { unique: false })
         }
       }
 
@@ -248,6 +256,34 @@ class AttendanceDB {
       summary.createdAt = new Date().toISOString()
     }
     return this.update(STORES.MONTHLY_SUMMARIES, summary)
+  }
+
+  // 日记相关方法
+  async getDiaryEntry(date) {
+    const records = await this.getByIndex(STORES.DIARY_ENTRIES, 'date', date)
+    return records[0] || null
+  }
+
+  async saveDiaryEntry(entry) {
+    if (!entry.id) {
+      entry.id = this.generateId()
+    }
+    entry.month = entry.date.substring(0, 7)
+    entry.updatedAt = new Date().toISOString()
+    if (!entry.createdAt) {
+      entry.createdAt = new Date().toISOString()
+    }
+    return this.update(STORES.DIARY_ENTRIES, entry)
+  }
+
+  async deleteDiaryEntry(date) {
+    const entry = await this.getDiaryEntry(date)
+    if (!entry) return null
+    return this.delete(STORES.DIARY_ENTRIES, entry.id)
+  }
+
+  async getDiaryEntriesByMonth(yearMonth) {
+    return this.getByIndex(STORES.DIARY_ENTRIES, 'month', yearMonth)
   }
 
   // 生成唯一ID
