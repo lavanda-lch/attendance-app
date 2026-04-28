@@ -79,6 +79,7 @@
                 'today': day.isToday,
                 'weekend': day.isWeekend,
                 'has-record': day.hasRecord,
+                'has-diary': day.hasDiary,
                 'selected': selectedDay?.dateStr === day.dateStr
               },
               day.record ? 'record-' + day.record.status : ''
@@ -109,8 +110,7 @@
             <div class="day-icons">
               <span class="day-icon" v-if="day.record?.weather" :title="'天气：' + getWeatherLabel(day.record.weather)">{{ getWeatherEmoji(day.record.weather) }}</span>
               <span class="day-icon" v-if="day.record?.mood" :title="'心情：' + getMoodLabel(day.record.mood)">{{ getMoodEmoji(day.record.mood) }}</span>
-              <span class="day-icon day-icon-diary" v-if="day.hasDiary" title="有日记"></span>
-              <span class="day-icon day-icon-empty" v-if="!day.record?.weather && !day.record?.mood && !day.hasDiary"></span>
+              <span class="day-icon day-icon-empty" v-if="!day.record?.weather && !day.record?.mood"></span>
             </div>
           </div>
         </div>
@@ -1132,14 +1132,12 @@ onMounted(() => {
   background: linear-gradient(135deg, #f2f3f5 0%, #f8f9fa 100%);
 }
 
-/* today + record：保留今日蓝框 + 状态左边条 */
+/* today + record：淡蓝边框 + 状态左边条 */
 .day.today.record-normal,
 .day.today.record-late,
 .day.today.record-early,
 .day.today.record-absent {
-  border-top: 2px solid var(--el-color-primary, #409eff);
-  border-right: 2px solid var(--el-color-primary, #409eff);
-  border-bottom: 2px solid var(--el-color-primary, #409eff);
+  border: 1px solid rgba(99, 102, 241, 0.2);
 }
 
 /* selected + record：保留选中蓝框 + 状态左边条 */
@@ -1153,8 +1151,8 @@ onMounted(() => {
 }
 
 .day.today {
-  border: 2px solid var(--el-color-primary, #409eff);
-  background: linear-gradient(135deg, var(--el-color-primary-light-9, #ecf5ff) 0%, var(--el-bg-color, #fff) 60%);
+  border: 1px solid rgba(99, 102, 241, 0.25);
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.06) 0%, rgba(99, 102, 241, 0.01) 60%);
 }
 
 .day.weekend.current-month {
@@ -1168,8 +1166,6 @@ onMounted(() => {
 .day.weekend.record-absent { background: linear-gradient(135deg, #f2f3f5 0%, #f8f9fa 100%); }
 
 .day.selected {
-  border-color: var(--el-color-primary, #409eff);
-  border-width: 2px;
   z-index: 1;
 }
 
@@ -1199,6 +1195,11 @@ onMounted(() => {
   border-radius: 50%;
   flex-shrink: 0;
   margin-top: 2px;
+  transition: transform 0.2s ease;
+}
+
+.day.has-record:hover .day-status-dot {
+  transform: scale(1.4);
 }
 
 .dot-normal { background: #67c23a; }
@@ -1226,29 +1227,37 @@ onMounted(() => {
 .badge-early  { background: rgba(245, 108, 108, 0.12); color: #f56c6c; }
 .badge-absent { background: rgba(144, 147, 153, 0.12); color: #909399; }
 
-/* ---- 右侧 2×2 图标栏 ---- */
+/* ---- 右下角图标栏 ---- */
 .day-icons {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 2px;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 4px;
   margin-top: auto;
-  align-self: flex-end;
-  margin-left: auto;
 }
 
 .day-icon {
-  font-size: 11px;
+  font-size: 22px;
   line-height: 1;
-  text-align: center;
 }
 
-.day-icon-diary {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  background: var(--app-primary, #6366f1);
-  display: inline-block;
-  margin: 2px auto 0;
+/* ---- 日记印章标记 ---- */
+.day.has-diary::after {
+  content: '日记';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%) rotate(-15deg);
+  font-size: 12px;
+  font-weight: 700;
+  color: rgba(239, 68, 68, 0.45);
+  border: 2px solid rgba(239, 68, 68, 0.35);
+  border-radius: 6px;
+  padding: 2px 6px;
+  letter-spacing: 2px;
+  z-index: 1;
+  pointer-events: none;
+  white-space: nowrap;
 }
 
 /* ---- 详情面板 ---- */
@@ -1514,19 +1523,17 @@ html.dark .day.record-absent {
 
 /* 今天：干净利落的顶部高亮线 */
 html.dark .day.today {
-  border-color: var(--el-border-color-light, #414243);
-  border-top: 3px solid var(--el-color-primary, #409eff);
-  background: var(--el-bg-color, #141414);
+  border: 1px solid rgba(99, 102, 241, 0.3);
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.15) 0%, rgba(99, 102, 241, 0.04) 60%);
 }
 
 html.dark .day.today .day-number {
-  color: var(--el-color-primary, #409eff);
+  color: var(--app-primary-light, #a5b4fc);
   font-weight: 700;
 }
 
 html.dark .day.selected {
-  border-color: var(--el-color-primary, #409eff);
-  border-width: 2px;
+  z-index: 1;
 }
 
 html.dark .day.selected .day-number {
@@ -1538,9 +1545,7 @@ html.dark .day.today.record-normal,
 html.dark .day.today.record-late,
 html.dark .day.today.record-early,
 html.dark .day.today.record-absent {
-  border-top: 3px solid var(--el-color-primary, #409eff);
-  border-right-color: var(--el-border-color-light, #414243);
-  border-bottom-color: var(--el-border-color-light, #414243);
+  border: 1px solid rgba(99, 102, 241, 0.2);
 }
 
 html.dark .day.selected.record-normal,
@@ -1564,6 +1569,11 @@ html.dark .day-number {
 
 html.dark .day:not(.current-month) .day-number {
   opacity: 0.4;
+}
+
+html.dark .day.has-diary::after {
+  color: rgba(252, 165, 165, 0.5);
+  border-color: rgba(252, 165, 165, 0.4);
 }
 
 /* ---- 详情面板（简洁实心卡） ---- */
