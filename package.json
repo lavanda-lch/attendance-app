@@ -5,6 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:backend": "cd backend && python server.py",
+    "dev:all": "vite & cd backend && python server.py",
     "build": "vite build",
     "preview": "vite preview"
   },
