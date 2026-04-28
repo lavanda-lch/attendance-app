@@ -1,0 +1,95 @@
+/* ===== 设计令牌 ===== */
+:root {
+  /* 品牌色 - 靛蓝 */
+  --app-primary: #6366f1;
+  --app-primary-light: #818cf8;
+  --app-primary-lighter: #a5b4fc;
+  --app-primary-bg: rgba(99, 102, 241, 0.08);
+
+  /* 语义色 */
+  --app-success: #10b981;
+  --app-success-light: #34d399;
+  --app-success-bg: rgba(16, 185, 129, 0.08);
+  --app-warning: #f59e0b;
+  --app-warning-light: #fbbf24;
+  --app-warning-bg: rgba(245, 158, 11, 0.08);
+  --app-danger: #ef4444;
+  --app-danger-bg: rgba(239, 68, 68, 0.08);
+  --app-info: #6366f1;
+
+  /* 圆角与阴影 */
+  --app-radius: 16px;
+  --app-radius-sm: 10px;
+  --app-shadow: 0 4px 24px rgba(0, 0, 0, 0.06);
+  --app-shadow-hover: 0 8px 32px rgba(0, 0, 0, 0.10);
+
+  /* 背景渐变 */
+  --app-bg-gradient: linear-gradient(135deg, #f8fafc 0%, #eef2ff 50%, #f8fafc 100%);
+  --app-card-bg: #ffffff;
+
+  /* 基础 */
+  --sans: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --mono: ui-monospace, 'Cascadia Code', Consolas, monospace;
+
+  font: 16px/1.6 var(--sans);
+  color-scheme: light dark;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ===== 暗黑模式 ===== */
+html.dark {
+  --app-bg-gradient: linear-gradient(135deg, #0f172a 0%, #1e1b4b 50%, #0f172a 100%);
+  --app-card-bg: #1e293b;
+  --app-shadow: 0 4px 24px rgba(0, 0, 0, 0.3);
+  --app-shadow-hover: 0 8px 32px rgba(0, 0, 0, 0.5);
+  --app-primary-bg: rgba(129, 140, 248, 0.12);
+  --app-success-bg: rgba(52, 211, 153, 0.10);
+  --app-warning-bg: rgba(251, 191, 36, 0.10);
+  --app-danger-bg: rgba(239, 68, 68, 0.10);
+}
+
+/* ===== 基础重置 ===== */
+body {
+  margin: 0;
+  background: var(--app-bg-gradient);
+  min-height: 100vh;
+}
+
+h1, h2 {
+  font-family: var(--sans);
+  font-weight: 600;
+}
+
+h1 { font-size: 28px; margin: 0; }
+h2 { font-size: 22px; margin: 0; }
+p { margin: 0; }
+
+/* ===== Element Plus 全局微调 ===== */
+.el-card {
+  border-radius: var(--app-radius) !important;
+  border: none !important;
+  box-shadow: var(--app-shadow) !important;
+  background: var(--app-card-bg) !important;
+  transition: box-shadow 0.3s ease;
+}
+
+.el-card:hover {
+  box-shadow: var(--app-shadow-hover) !important;
+}
+
+.el-button--primary {
+  background: linear-gradient(135deg, var(--app-primary) 0%, var(--app-primary-light) 100%) !important;
+  border: none !important;
+}
+
+.el-button--primary:hover {
+  opacity: 0.9;
+}
+
+.el-tag {
+  border-radius: 20px !important;
+  padding: 0 12px !important;
+}
